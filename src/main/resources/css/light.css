@@ -1,0 +1,10 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --code-bg: #f6f8fa;
+  --quote-bg: #f6f8fa;
+  --link: #0969da;
+  --active-heading: #1f2328;
+}
