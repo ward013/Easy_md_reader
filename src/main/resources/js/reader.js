@@ -13,11 +13,10 @@ function clearSearchHighlights() {
 function jumpToAnchor(anchorId) {
   const node = document.getElementById(anchorId);
   if (node) {
-    try {
+    if (window.location.hash !== "#" + anchorId) {
+      window.location.hash = anchorId;
+    } else {
       node.scrollIntoView(true);
-    } catch (error) {
-      const top = node.getBoundingClientRect().top + window.pageYOffset - 20;
-      window.scrollTo(0, Math.max(top, 0));
     }
     reportActiveAnchor(anchorId);
     return true;
@@ -34,10 +33,17 @@ function reportActiveAnchor(anchorId) {
   document.querySelectorAll(".is-active-heading").forEach(function (heading) {
     heading.classList.remove("is-active-heading");
   });
+  document.querySelectorAll(".toc-link.is-active").forEach(function (link) {
+    link.classList.remove("is-active");
+  });
 
   const activeNode = document.getElementById(anchorId);
   if (activeNode) {
     activeNode.classList.add("is-active-heading");
+  }
+  const activeLink = document.querySelector('.toc-link[data-anchor="' + anchorId + '"]');
+  if (activeLink) {
+    activeLink.classList.add("is-active");
   }
 }
 
@@ -80,4 +86,7 @@ function installHeadingObserver() {
 
 window.addEventListener("load", function () {
   installHeadingObserver();
+  if (window.__INITIAL_ANCHOR__) {
+    jumpToAnchor(window.__INITIAL_ANCHOR__);
+  }
 });

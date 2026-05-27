@@ -3,17 +3,24 @@ package com.example.mdreader.service;
 import com.example.mdreader.model.ReaderPreferences;
 import com.example.mdreader.model.RenderedDocument;
 import com.example.mdreader.model.Theme;
+import com.example.mdreader.model.TocItem;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 
 public class HtmlTemplateService {
 
     public String buildHtml(RenderedDocument document, ReaderPreferences preferences) {
+        return buildHtml(document, preferences, null);
+    }
+
+    public String buildHtml(RenderedDocument document, ReaderPreferences preferences, String initialAnchorId) {
         String themeClass = preferences.theme() == Theme.DARK ? "theme-dark" : "theme-light";
         String title = escapeHtml(document.title());
         String body = Objects.requireNonNullElse(document.htmlBody(), "");
+        String tocHtml = buildTocHtml(document.tocItems());
         return """
                 <!DOCTYPE html>
                 <html lang="zh-CN">
@@ -23,17 +30,26 @@ public class HtmlTemplateService {
                   <title>%s</title>
                   <style>%s</style>
                   <script>%s</script>
+                  <script>window.__INITIAL_ANCHOR__ = %s;</script>
                 </head>
                 <body class="%s" style="--reader-font-size: %dpx;">
-                  <main class="markdown-body">%s</main>
+                  <div class="reader-shell">
+                    <aside class="reader-sidebar">
+                      <div class="sidebar-title">目录</div>
+                      <nav class="toc-nav">%s</nav>
+                    </aside>
+                    <main class="markdown-body">%s</main>
+                  </div>
                 </body>
                 </html>
                 """.formatted(
                 title,
                 readResource("css/base.css") + "\n" + readResource(themeResource(preferences.theme())),
                 readResource("js/reader.js"),
+                toJsStringLiteral(initialAnchorId),
                 themeClass,
                 preferences.fontSize(),
+                tocHtml,
                 body
         );
     }
@@ -46,7 +62,7 @@ public class HtmlTemplateService {
                 <p>这是一个基于 JavaFX 的轻量 Markdown 阅读器项目骨架。</p>
                 <ul>
                   <li>点击上方“打开”选择本地 Markdown 文件</li>
-                  <li>左侧目录会在加载文档后自动生成</li>
+                  <li>页面左侧会在加载文档后自动生成目录</li>
                   <li>支持主题切换和字号调整</li>
                 </ul>
                 """,
@@ -92,5 +108,45 @@ public class HtmlTemplateService {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    private String buildTocHtml(List<TocItem> tocItems) {
+        if (tocItems == null || tocItems.isEmpty()) {
+            return "<div class=\"toc-empty\">当前文档没有目录项</div>";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        appendTocList(builder, tocItems);
+        return builder.toString();
+    }
+
+    private void appendTocList(StringBuilder builder, List<TocItem> items) {
+        builder.append("<ul class=\"toc-list\">");
+        for (TocItem item : items) {
+            builder.append("<li class=\"toc-item toc-level-")
+                    .append(item.level())
+                    .append("\">")
+                    .append("<a class=\"toc-link\" href=\"#")
+                    .append(escapeHtml(item.anchorId()))
+                    .append("\" data-anchor=\"")
+                    .append(escapeHtml(item.anchorId()))
+                    .append("\">")
+                    .append(escapeHtml(item.text()))
+                    .append("</a>");
+            if (item.children() != null && !item.children().isEmpty()) {
+                appendTocList(builder, item.children());
+            }
+            builder.append("</li>");
+        }
+        builder.append("</ul>");
+    }
+
+    private String toJsStringLiteral(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return "\"" + value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"") + "\"";
     }
 }

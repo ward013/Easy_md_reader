@@ -43,16 +43,23 @@ public class PreferenceService {
         }
     }
 
-    public void rememberFile(ReaderPreferences preferences, Path file) {
+    public ReaderPreferences rememberFile(ReaderPreferences preferences, Path file) {
         LinkedHashSet<String> ordered = new LinkedHashSet<>();
         ordered.add(file.toAbsolutePath().normalize().toString());
         ordered.addAll(preferences.recentFiles());
 
         List<String> recentFiles = new ArrayList<>(ordered);
         if (recentFiles.size() > MAX_RECENT_FILES) {
-            recentFiles = recentFiles.subList(0, MAX_RECENT_FILES);
+            recentFiles = new ArrayList<>(recentFiles.subList(0, MAX_RECENT_FILES));
         }
-        preferences.recentFiles().clear();
-        preferences.recentFiles().addAll(recentFiles);
+        return preferences.withRecentFiles(recentFiles);
+    }
+
+    public ReaderPreferences removeRecentFile(ReaderPreferences preferences, Path file) {
+        String target = file.toAbsolutePath().normalize().toString();
+        List<String> filtered = preferences.recentFiles().stream()
+                .filter(path -> !path.equals(target))
+                .toList();
+        return preferences.withRecentFiles(filtered);
     }
 }

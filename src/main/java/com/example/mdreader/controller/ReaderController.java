@@ -5,13 +5,15 @@ import com.example.mdreader.model.ReaderPreferences;
 import com.example.mdreader.model.ReaderState;
 import com.example.mdreader.model.RenderedDocument;
 import com.example.mdreader.model.Theme;
-import com.example.mdreader.model.TocItem;
 import com.example.mdreader.service.FileManager;
 import com.example.mdreader.service.HtmlTemplateService;
 import com.example.mdreader.service.MarkdownService;
 import com.example.mdreader.service.PreferenceService;
 import com.example.mdreader.service.SearchService;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import javafx.geometry.Insets;
@@ -19,11 +21,11 @@ import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.SplitPane;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToolBar;
-import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -45,11 +47,11 @@ public class ReaderController {
     private final ReaderState readerState = new ReaderState();
     private ReaderPreferences preferences;
 
-    private TreeView<TocItem> tocTree;
     private WebView webView;
     private Label statusLabel;
     private TextField searchField;
-    private boolean suppressTocNavigation;
+    private MenuButton recentFilesButton;
+    private Path currentHtmlPreviewFile;
 
     public ReaderController(Stage stage) {
         this.stage = stage;
@@ -80,6 +82,9 @@ public class ReaderController {
         Button openButton = new Button("打开");
         openButton.setOnAction(event -> openFileChooser());
 
+        recentFilesButton = new MenuButton("最近");
+        rebuildRecentFilesMenu();
+
         Button reloadButton = new Button("刷新");
         reloadButton.setOnAction(event -> reloadCurrentFile());
 
@@ -108,6 +113,7 @@ public class ReaderController {
 
         return new ToolBar(
                 openButton,
+                recentFilesButton,
                 reloadButton,
                 themeButton,
                 smallerFontButton,
@@ -117,20 +123,7 @@ public class ReaderController {
         );
     }
 
-    private SplitPane buildCenter() {
-        tocTree = new TreeView<>();
-        tocTree.setMinWidth(220);
-        tocTree.setPrefWidth(280);
-        tocTree.setShowRoot(false);
-        tocTree.getSelectionModel().selectedItemProperty().addListener((obs, oldItem, newItem) -> {
-            if (suppressTocNavigation) {
-                return;
-            }
-            if (newItem != null && newItem.getValue() != null) {
-                jumpToAnchor(newItem.getValue().anchorId());
-            }
-        });
-
+    private WebView buildCenter() {
         webView = new WebView();
         webView.setContextMenuEnabled(false);
         webView.getEngine().locationProperty().addListener((obs, oldLocation, newLocation) -> {
@@ -141,10 +134,7 @@ public class ReaderController {
                 openFile(Path.of(java.net.URI.create(newLocation)));
             }
         });
-
-        SplitPane splitPane = new SplitPane(tocTree, webView);
-        splitPane.setDividerPositions(0.24);
-        return splitPane;
+        return webView;
     }
 
     private void installDragAndDrop(BorderPane root) {
@@ -209,11 +199,10 @@ public class ReaderController {
 
             readerState.setCurrentFile(path);
             readerState.setCurrentDocument(rendered);
-            webEngine().loadContent(html);
-            updateToc(rendered.tocItems());
-            selectAnchor(rendered.tocItems().isEmpty() ? null : rendered.tocItems().getFirst().anchorId());
-            preferenceService.rememberFile(preferences, path);
+            loadHtmlDocument(html);
+            preferences = preferenceService.rememberFile(preferences, path);
             preferenceService.save(preferences);
+            rebuildRecentFilesMenu();
             statusLabel.setText("已打开: " + path.getFileName());
             stage.setTitle("md-reader - " + path.getFileName());
         } catch (Exception ex) {
@@ -240,7 +229,7 @@ public class ReaderController {
         RenderedDocument currentDocument = readerState.getCurrentDocument();
         if (currentDocument != null) {
             String html = htmlTemplateService.buildHtml(currentDocument, preferences);
-            webEngine().loadContent(html);
+            loadHtmlDocument(html);
         } else {
             loadWelcomePage();
         }
@@ -255,7 +244,7 @@ public class ReaderController {
         RenderedDocument currentDocument = readerState.getCurrentDocument();
         if (currentDocument != null) {
             String html = htmlTemplateService.buildHtml(currentDocument, preferences);
-            webEngine().loadContent(html);
+            loadHtmlDocument(html);
         } else {
             loadWelcomePage();
         }
@@ -272,66 +261,54 @@ public class ReaderController {
         statusLabel.setText(found ? "找到关键字: " + keyword : "未找到: " + keyword);
     }
 
-    private void updateToc(List<TocItem> items) {
-        TreeItem<TocItem> root = new TreeItem<>(new TocItem("ROOT", "root", 0, List.of()));
-        root.setExpanded(true);
-        populateTree(root, items);
-        tocTree.setRoot(root);
-    }
-
-    private void populateTree(TreeItem<TocItem> parent, List<TocItem> items) {
-        for (TocItem item : items) {
-            TreeItem<TocItem> treeItem = new TreeItem<>(item);
-            treeItem.setExpanded(true);
-            parent.getChildren().add(treeItem);
-            populateTree(treeItem, item.children());
-        }
-    }
-
-    private void jumpToAnchor(String anchorId) {
-        if (anchorId == null || anchorId.isBlank()) {
-            return;
-        }
-        searchService.jumpToAnchor(webEngine(), anchorId);
-    }
-
     private void loadWelcomePage() {
-        TreeItem<TocItem> root = new TreeItem<>(new TocItem("ROOT", "root", 0, List.of()));
-        root.setExpanded(true);
-        tocTree.setRoot(root);
         String html = htmlTemplateService.buildWelcomePage(preferences);
-        webEngine().loadContent(html);
+        loadHtmlDocument(html);
         statusLabel.setText("准备就绪");
     }
 
-    private void selectAnchor(String anchorId) {
-        if (anchorId == null || anchorId.isBlank() || tocTree.getRoot() == null) {
-            return;
-        }
-        TreeItem<TocItem> target = findTreeItem(tocTree.getRoot(), anchorId);
-        if (target == null) {
+    private void rebuildRecentFilesMenu() {
+        if (recentFilesButton == null) {
             return;
         }
 
-        suppressTocNavigation = true;
-        try {
-            tocTree.getSelectionModel().select(target);
-        } finally {
-            suppressTocNavigation = false;
+        recentFilesButton.getItems().clear();
+        List<String> recentFiles = preferences.recentFiles();
+        if (recentFiles.isEmpty()) {
+            MenuItem emptyItem = new MenuItem("暂无记录");
+            emptyItem.setDisable(true);
+            recentFilesButton.getItems().add(emptyItem);
+            return;
         }
+
+        for (String filePath : recentFiles) {
+            Path path = Path.of(filePath);
+            MenuItem item = new MenuItem(path.getFileName().toString());
+            item.setOnAction(event -> openRecentFile(path));
+            recentFilesButton.getItems().add(item);
+        }
+
+        recentFilesButton.getItems().add(new SeparatorMenuItem());
+        MenuItem clearItem = new MenuItem("清空记录");
+        clearItem.setOnAction(event -> {
+            preferences = preferences.withRecentFiles(List.of());
+            preferenceService.save(preferences);
+            rebuildRecentFilesMenu();
+            statusLabel.setText("已清空最近打开记录");
+        });
+        recentFilesButton.getItems().add(clearItem);
     }
 
-    private TreeItem<TocItem> findTreeItem(TreeItem<TocItem> current, String anchorId) {
-        if (current.getValue() != null && anchorId.equals(current.getValue().anchorId())) {
-            return current;
+    private void openRecentFile(Path path) {
+        if (!path.toFile().exists()) {
+            preferences = preferenceService.removeRecentFile(preferences, path);
+            preferenceService.save(preferences);
+            rebuildRecentFilesMenu();
+            statusLabel.setText("最近文件不存在，已移除记录");
+            showError("文件不存在: " + path);
+            return;
         }
-        for (TreeItem<TocItem> child : current.getChildren()) {
-            TreeItem<TocItem> found = findTreeItem(child, anchorId);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
+        openFile(path);
     }
 
     private void showError(String message) {
@@ -344,10 +321,34 @@ public class ReaderController {
 
     private void loadErrorPage(String message) {
         String html = htmlTemplateService.buildErrorPage(message, preferences);
-        webEngine().loadContent(html);
+        loadHtmlDocument(html);
     }
 
     private WebEngine webEngine() {
         return webView.getEngine();
+    }
+
+    private void loadHtmlDocument(String html) {
+        try {
+            Path nextFile = Files.createTempFile("md-reader-", ".html");
+            Files.writeString(nextFile, html, StandardCharsets.UTF_8);
+            nextFile.toFile().deleteOnExit();
+            deletePreviousPreviewFile();
+            currentHtmlPreviewFile = nextFile;
+            webEngine().load(nextFile.toUri().toString());
+        } catch (IOException ex) {
+            throw new IllegalStateException("写入预览页面失败", ex);
+        }
+    }
+
+    private void deletePreviousPreviewFile() {
+        if (currentHtmlPreviewFile == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(currentHtmlPreviewFile);
+        } catch (IOException ignored) {
+            // Temporary preview files are best-effort cleanup only.
+        }
     }
 }

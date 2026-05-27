@@ -27,6 +27,77 @@ body {
   line-height: 1.7;
 }
 
+.reader-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.reader-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  padding: 18px 16px 28px;
+}
+
+.sidebar-title {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.toc-nav {
+  font-size: 14px;
+}
+
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-item {
+  margin: 0;
+}
+
+.toc-item + .toc-item {
+  margin-top: 4px;
+}
+
+.toc-item .toc-list {
+  margin-top: 4px;
+  padding-left: 14px;
+}
+
+.toc-link {
+  display: block;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 8px;
+  text-decoration: none;
+}
+
+.toc-link:hover {
+  background: var(--toc-hover-bg);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.toc-link.is-active {
+  background: var(--toc-active-bg);
+  color: var(--fg);
+}
+
+.toc-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .markdown-body {
   max-width: 980px;
   margin: 0 auto;

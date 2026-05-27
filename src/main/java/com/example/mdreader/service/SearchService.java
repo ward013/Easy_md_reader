@@ -21,8 +21,13 @@ public class SearchService {
         engine.executeScript("window.find('', false, true, true, false, true, false);");
     }
 
-    public void jumpToAnchor(WebEngine engine, String anchorId) {
-        engine.executeScript("jumpToAnchor('%s');".formatted(escapeJs(anchorId)));
+    public boolean jumpToAnchor(WebEngine engine, String anchorId) {
+        Object result = engine.executeScript("""
+                (function() {
+                    return jumpToAnchor('%s');
+                })();
+                """.formatted(escapeJs(anchorId)));
+        return result instanceof Boolean booleanResult && booleanResult;
     }
 
     private String escapeJs(String raw) {

@@ -10,21 +10,20 @@ import com.vladsch.flexmark.ext.toc.TocExtension;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.ast.Document;
-import com.vladsch.flexmark.util.ast.Node;
 import com.vladsch.flexmark.util.data.MutableDataSet;
-import com.vladsch.flexmark.ast.Heading;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 public class MarkdownService {
     private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-z0-9]+");
-    private static final Pattern HEADING_TAG_PATTERN = Pattern.compile("<h([1-6])(.*?)>");
 
     private final Parser parser;
     private final HtmlRenderer renderer;
@@ -43,31 +42,28 @@ public class MarkdownService {
 
     public RenderedDocument render(DocumentSource source) {
         Document document = parser.parse(source.rawMarkdown());
-        List<HeadingInfo> headings = extractHeadings(document);
-        List<TocItem> tocItems = toTree(headings);
-        String html = injectHeadingAnchors(renderer.render(document), headings);
-        String resolvedHtml = ResourceResolver.rewriteRelativeResources(html, source.baseDir());
+        String renderedHtml = renderer.render(document);
+        ProcessedHtml processedHtml = processHeadings(renderedHtml);
+        List<TocItem> tocItems = toTree(processedHtml.headings());
+        String resolvedHtml = ResourceResolver.rewriteRelativeResources(processedHtml.htmlBody(), source.baseDir());
         String title = !tocItems.isEmpty() ? tocItems.getFirst().text() : source.fileName();
 
         return new RenderedDocument(title, resolvedHtml, tocItems, source.path(), source.baseDir());
     }
 
-    private List<HeadingInfo> extractHeadings(Document document) {
+    private ProcessedHtml processHeadings(String html) {
+        org.jsoup.nodes.Document document = Jsoup.parseBodyFragment(html);
+        Elements headingElements = document.select("h1, h2, h3, h4, h5, h6");
         List<HeadingInfo> headings = new ArrayList<>();
         AtomicInteger counter = new AtomicInteger(0);
-        collectHeadings(document, headings, counter);
-        return headings;
-    }
-
-    private void collectHeadings(Node node, List<HeadingInfo> headings, AtomicInteger counter) {
-        for (Node current = node.getFirstChild(); current != null; current = current.getNext()) {
-            if (current instanceof Heading heading) {
-                String text = heading.getText().toString();
-                String anchor = buildAnchorId(text, counter.incrementAndGet());
-                headings.add(new HeadingInfo(text, anchor, heading.getLevel()));
-            }
-            collectHeadings(current, headings, counter);
+        for (Element headingElement : headingElements) {
+            String text = headingElement.text();
+            String anchorId = buildAnchorId(text, counter.incrementAndGet());
+            int level = Integer.parseInt(headingElement.tagName().substring(1));
+            headingElement.attr("id", anchorId);
+            headings.add(new HeadingInfo(text, anchorId, level));
         }
+        return new ProcessedHtml(document.body().html(), headings);
     }
 
     private List<TocItem> toTree(List<HeadingInfo> headings) {
@@ -96,34 +92,9 @@ public class MarkdownService {
         return normalized + "-" + index;
     }
 
-    private String injectHeadingAnchors(String html, List<HeadingInfo> headings) {
-        if (headings.isEmpty()) {
-            return html;
-        }
-
-        Matcher matcher = HEADING_TAG_PATTERN.matcher(html);
-        StringBuffer buffer = new StringBuffer();
-        int index = 0;
-        while (matcher.find()) {
-            if (index >= headings.size()) {
-                break;
-            }
-
-            String attributes = matcher.group(2);
-            String anchorId = headings.get(index).anchorId();
-            String replacementTag;
-            if (attributes.contains(" id=")) {
-                replacementTag = "<h" + matcher.group(1) + attributes + ">";
-            } else {
-                replacementTag = "<h" + matcher.group(1) + attributes + " id=\"" + anchorId + "\">";
-            }
-            matcher.appendReplacement(buffer, Matcher.quoteReplacement(replacementTag));
-            index++;
-        }
-        matcher.appendTail(buffer);
-        return buffer.toString();
+    private record HeadingInfo(String text, String anchorId, int level) {
     }
 
-    private record HeadingInfo(String text, String anchorId, int level) {
+    private record ProcessedHtml(String htmlBody, List<HeadingInfo> headings) {
     }
 }
