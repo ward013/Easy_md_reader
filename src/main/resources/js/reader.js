@@ -14,10 +14,9 @@ function jumpToAnchor(anchorId) {
   const node = document.getElementById(anchorId);
   if (node) {
     if (window.location.hash !== "#" + anchorId) {
-      window.location.hash = anchorId;
-    } else {
-      node.scrollIntoView(true);
+      history.replaceState(null, "", "#" + anchorId);
     }
+    node.scrollIntoView(true);
     reportActiveAnchor(anchorId);
     return true;
   }
@@ -86,7 +85,17 @@ function installHeadingObserver() {
 
 window.addEventListener("load", function () {
   installHeadingObserver();
-  if (window.__INITIAL_ANCHOR__) {
-    jumpToAnchor(window.__INITIAL_ANCHOR__);
+  if (window.location.hash) {
+    const anchorId = window.location.hash.slice(1);
+    if (anchorId) {
+      jumpToAnchor(anchorId);
+    }
+  }
+});
+
+window.addEventListener("hashchange", function () {
+  const anchorId = window.location.hash.slice(1);
+  if (anchorId) {
+    reportActiveAnchor(anchorId);
   }
 });

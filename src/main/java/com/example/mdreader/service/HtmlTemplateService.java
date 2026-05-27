@@ -13,10 +13,6 @@ import java.util.Objects;
 public class HtmlTemplateService {
 
     public String buildHtml(RenderedDocument document, ReaderPreferences preferences) {
-        return buildHtml(document, preferences, null);
-    }
-
-    public String buildHtml(RenderedDocument document, ReaderPreferences preferences, String initialAnchorId) {
         String themeClass = preferences.theme() == Theme.DARK ? "theme-dark" : "theme-light";
         String title = escapeHtml(document.title());
         String body = Objects.requireNonNullElse(document.htmlBody(), "");
@@ -30,7 +26,6 @@ public class HtmlTemplateService {
                   <title>%s</title>
                   <style>%s</style>
                   <script>%s</script>
-                  <script>window.__INITIAL_ANCHOR__ = %s;</script>
                 </head>
                 <body class="%s" style="--reader-font-size: %dpx;">
                   <div class="reader-shell">
@@ -46,7 +41,6 @@ public class HtmlTemplateService {
                 title,
                 readResource("css/base.css") + "\n" + readResource(themeResource(preferences.theme())),
                 readResource("js/reader.js"),
-                toJsStringLiteral(initialAnchorId),
                 themeClass,
                 preferences.fontSize(),
                 tocHtml,
@@ -141,12 +135,4 @@ public class HtmlTemplateService {
         builder.append("</ul>");
     }
 
-    private String toJsStringLiteral(String value) {
-        if (value == null) {
-            return "null";
-        }
-        return "\"" + value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"") + "\"";
-    }
 }

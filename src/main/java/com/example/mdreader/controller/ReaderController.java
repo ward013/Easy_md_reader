@@ -283,7 +283,11 @@ public class ReaderController {
 
         for (String filePath : recentFiles) {
             Path path = Path.of(filePath);
-            MenuItem item = new MenuItem(path.getFileName().toString());
+            String label = path.getFileName().toString();
+            if (path.getParent() != null) {
+                label += "  -  " + abbreviatePath(path.getParent());
+            }
+            MenuItem item = new MenuItem(label);
             item.setOnAction(event -> openRecentFile(path));
             recentFilesButton.getItems().add(item);
         }
@@ -326,6 +330,18 @@ public class ReaderController {
 
     private WebEngine webEngine() {
         return webView.getEngine();
+    }
+
+    private String abbreviatePath(Path path) {
+        String fullPath = path.toAbsolutePath().normalize().toString();
+        String home = System.getProperty("user.home");
+        if (fullPath.startsWith(home)) {
+            fullPath = "~" + fullPath.substring(home.length());
+        }
+        if (fullPath.length() <= 42) {
+            return fullPath;
+        }
+        return fullPath.substring(0, 18) + "..." + fullPath.substring(fullPath.length() - 20);
     }
 
     private void loadHtmlDocument(String html) {
